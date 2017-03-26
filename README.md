@@ -48,19 +48,23 @@ If you need visualization functionality:
 
 ## How it works
 
+> 中文读者可以直接看我的博客，有配图：<https://ctmakro.github.io/site/on_learning/npeg/npeg.html>
+
+For English readers:
+
 Training:
 
 - image -> Encoder CNN -> features
 - features += gaussian noise
 - features -> sigmoid -> code
 - code -> Decoder CNN -> reconstruction
-- loss = mean((image-reconstruction) ** 2) + mean(code) * 0.001
+- loss = mean((image-reconstruction) ** 2) + mean(code**2) * 0.01
 
 To reduce reconstruction loss, the best encoding strategy for the encoder is to drive its output ("features") large, to reduce artifacts caused by the gaussian noise.
 
 Therefore by increasing the magnitude of the gaussian noise, the code will eventually saturate to 0 or 1.
 
-We encourage sparsity of the code (to allow for further compression) by adding a penalty term (`mean(code) * 0.001`), after which the code will tend to include more zeros and less ones.
+We encourage sparsity of the code (to allow for further compression) by adding a penalty term (`mean(code**2) * 0.01`), after which the code will tend to include more zeros and less ones.
 
 Testing:
 
