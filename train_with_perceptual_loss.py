@@ -3,57 +3,22 @@ import canton as ct
 from canton import *
 import tensorflow as tf
 
-# get the fking data
-def cifar():
-    from keras.datasets import cifar10
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
+from train import *
 
-    print('X_train shape:', X_train.shape)
-    print(X_train.shape[0], 'train samples')
-    print(X_test.shape[0], 'test samples')
+# apply VGG16 to a tensor, obtain output from one of the layers
+def apply_vgg(tensor):
+    print('importing VGG19...')
+    from keras.applications.vgg16 import VGG16
+    from keras import backend as K
+    K.set_session(ct.get_session()) # make sure we are in the same universe
 
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-
-    X_train /= 255
-    X_test /= 255
-    return X_train
-
-def encoder():
-    c=Can()
-    def conv(nip,nop,tail=True):
-        c.add(Conv2D(nip,nop,k=3,usebias=True))
-        if tail:
-            # c.add(BatchNorm(nop))
-            c.add(Act('elu'))
-    c.add(Lambda(lambda x:x-0.5))
-    conv(3,16)
-    conv(16,32)
-    conv(32,64)
-    conv(64,128,tail=False)
-    c.chain()
-    return c
-
-def decoder():
-    c=Can()
-    def conv(nip,nop,tail=True):
-        c.add(Conv2D(nip,nop,k=3,usebias=True))
-        if tail:
-            # c.add(BatchNorm(nop))
-            c.add(Act('elu'))
-
-    conv(128,64)
-    conv(64,32)
-    conv(32,16)
-    conv(16,3,tail=False)
-    c.add(Act('sigmoid'))
-    c.chain()
-    return c
+    vgginst = VGG16(include_top=False, weights='imagenet', input_tensor=tensor)
+    return vgginst.get_layer('block2_conv2').output
 
 def get_trainer():
     x = ph([None,None,3])
 
-    # augment the training set by adding random gain and bias pertubation
+    # augment the training set by adding random gain and bias perturbation
     sx = tf.shape(x)
     input_gain = tf.random_uniform(
         minval=0.6,
@@ -63,11 +28,11 @@ def get_trainer():
         minval=-.2,
         maxval=.2,
         shape=[sx[0],1,1,1])
-    noisy_x = x * input_gain + input_bias
-    noisy_x = tf.clip_by_value(noisy_x,clip_value_max=1.,clip_value_min=0.)
+    pt_x = x * input_gain + input_bias
+    pt_x = tf.clip_by_value(pt_x,clip_value_max=1.,clip_value_min=0.)
 
     code_noise = tf.Variable(0.1)
-    linear_code = enc(noisy_x)
+    linear_code = enc(pt_x)
 
     # add gaussian before sigmoid to encourage binary code
     noisy_code = linear_code + \
@@ -75,7 +40,11 @@ def get_trainer():
     binary_code = Act('sigmoid')(noisy_code)
 
     y = dec(binary_code)
-    loss = tf.reduce_mean((y-noisy_x)**2) + tf.reduce_mean(binary_code**2) * 0.01
+
+    perceptual_y = apply_vgg(y)
+    perceptual_x = apply_vgg(pt_x)
+
+    loss = tf.reduce_mean((perceptual_x-perceptual_y)**2) + tf.reduce_mean(binary_code**2) * 0.01
 
     opt = tf.train.AdamOptimizer()
     train_step = opt.minimize(loss,
@@ -96,12 +65,15 @@ def get_trainer():
 
     def test(batch,quanth):
         sess = ct.get_session()
-        res = sess.run([binary_code_test,y_test,binary_code,y,noisy_x],feed_dict={
+        res = sess.run([binary_code_test,y_test,binary_code,y,pt_x],feed_dict={
             x:batch,
             quantization_threshold:quanth,
         })
         return res
     return feed,test
+
+feed,test = get_trainer()
+get_session().run(ct.gvi())
 
 def r(ep=1,cnoise=0.1):
     np.random.shuffle(xt)
@@ -133,20 +105,3 @@ def show(threshold=.5):
     vis.show_batch_autoscaled(noisy_x,name='input')
     vis.show_batch_autoscaled(rec,name='recon(quant)')
     vis.show_batch_autoscaled(rec2,name='recon(no quant)')
-
-def save():
-    enc.save_weights('enc.npy')
-    dec.save_weights('dec.npy')
-
-def load():
-    enc.load_weights('enc.npy')
-    dec.load_weights('dec.npy')
-
-enc,dec = encoder(),decoder()
-enc.summary()
-dec.summary()
-xt = cifar()
-
-if __name__ == '__main__':
-    feed,test = get_trainer()
-    get_session().run(ct.gvi())
