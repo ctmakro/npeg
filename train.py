@@ -81,7 +81,7 @@ def get_trainer():
     binary_code = Act('sigmoid')(noisy_code)
 
     y = dec(binary_code)
-    loss = tf.reduce_mean((y-noisy_x)**2) + tf.reduce_mean(binary_code) * 0.001
+    loss = tf.reduce_mean((y-noisy_x)**2) + tf.reduce_mean(binary_code**2) * 0.01
 
     opt = tf.train.AdamOptimizer()
     train_step = opt.minimize(loss,
@@ -96,13 +96,15 @@ def get_trainer():
         return res[1]
 
     set_training_state(False)
-    binary_code_test = tf.cast(binary_code>0.5,tf.float32)
+    quantization_threshold = tf.Variable(0.5)
+    binary_code_test = tf.cast(binary_code>quantization_threshold,tf.float32)
     y_test = dec(binary_code_test)
 
-    def test(batch):
+    def test(batch,quanth):
         sess = ct.get_session()
         res = sess.run([binary_code_test,y_test,binary_code,y,noisy_x],feed_dict={
             x:batch,
+            quantization_threshold:quanth,
         })
         return res
     return feed,test
@@ -113,7 +115,7 @@ get_session().run(ct.gvi())
 def r(ep=1,cnoise=0.1):
     np.random.shuffle(xt)
     length = len(xt)
-    bs = 10
+    bs = 20
     for i in range(ep):
         print('ep',i)
         for j in range(0,length,bs):
@@ -121,15 +123,16 @@ def r(ep=1,cnoise=0.1):
             loss = feed(minibatch,cnoise)
             print(j,'loss:',loss)
 
-            if j%200==0:
+            if j%1000==0:
                 show()
 
-def show():
+def show(threshold=.5):
     from cv2tools import vis,filt
     bs = 16
     j = np.random.choice(len(xt)-16)
     minibatch = xt[j:j+bs]
-    code, rec, code2, rec2, noisy_x = test(minibatch)
+    code, rec, code2, rec2, noisy_x = test(minibatch,threshold)
+    
     code = np.transpose(code[0:1],axes=(3,1,2,0))
     code2 = np.transpose(code2[0:1],axes=(3,1,2,0))
 

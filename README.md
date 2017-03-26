@@ -13,6 +13,27 @@ $ cd npeg
 $ ipython -i train.py
 ```
 
+then type in one of the following commands:
+
+```python
+# strong noise training (should converge to 0.0008 loss)
+for i in range(5):
+    r(cnoise=15.0)
+    
+# weak noise pretraining (no difference in final loss)
+for i in [0.1, 0.3, 1.0, 5.0, 15.0]:
+    r(cnoise=i)
+    
+# save weights to file
+save()
+
+# load weights from file
+load()
+
+# test model on randomly sampled CIFAR
+show()
+```
+
 Dependencies:
 
 - TensorFlow r1.0
@@ -49,5 +70,6 @@ Testing:
 
 ## About
 
-Author Qin Yongliang
-License MIT
+Author: Qin Yongliang
+
+License: MIT
