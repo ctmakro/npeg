@@ -7,13 +7,13 @@ from train import *
 
 # apply VGG16 to a tensor, obtain output from one of the layers
 def apply_vgg(tensor):
-    print('importing VGG19...')
+    print('importing VGG16...')
     from keras.applications.vgg16 import VGG16
     from keras import backend as K
     K.set_session(ct.get_session()) # make sure we are in the same universe
 
     vgginst = VGG16(include_top=False, weights='imagenet', input_tensor=tensor)
-    return vgginst.get_layer('block2_conv2').output
+    return vgginst.get_layer('block1_conv2').output
 
 def get_trainer():
     x = ph([None,None,3])
@@ -44,18 +44,35 @@ def get_trainer():
     perceptual_y = apply_vgg(y)
     perceptual_x = apply_vgg(pt_x)
 
-    loss = tf.reduce_mean((perceptual_x-perceptual_y)**2) + tf.reduce_mean(binary_code**2) * 0.01
 
-    opt = tf.train.AdamOptimizer()
+    # use this loss for initialization
+    loss_init = tf.reduce_mean((y-pt_x)**2)
+    # use this loss after initialization
+    loss = tf.reduce_mean((perceptual_x-perceptual_y)**2) * 0.00\
+        + tf.reduce_mean((y-pt_x)**2) \
+        + tf.reduce_mean(binary_code) * 0.01 * code_noise
+
+    opt = tf.train.AdamOptimizer(learning_rate=1e-4)
+    
+    train_step_init = opt.minimize(loss_init,
+    var_list=enc.get_weights()+dec.get_weights())
+    
     train_step = opt.minimize(loss,
         var_list=enc.get_weights()+dec.get_weights())
 
-    def feed(batch,cnoise):
+    def feed(batch,cnoise,init=False):
         sess = ct.get_session()
-        res = sess.run([train_step,loss],feed_dict={
-            x:batch,
-            code_noise:cnoise,
-        })
+        if init:
+            res = sess.run([train_step_init,loss_init],feed_dict={
+                x:batch,
+                code_noise:cnoise,
+            })
+        else:
+            res = sess.run([train_step,loss],feed_dict={
+                x:batch,
+                code_noise:cnoise,
+            })
+
         return res[1]
 
     set_training_state(False)
@@ -75,7 +92,7 @@ def get_trainer():
 feed,test = get_trainer()
 get_session().run(ct.gvi())
 
-def r(ep=1,cnoise=0.1):
+def r(ep=1,cnoise=0.1,init=False):
     np.random.shuffle(xt)
     length = len(xt)
     bs = 20
@@ -83,7 +100,7 @@ def r(ep=1,cnoise=0.1):
         print('ep',i)
         for j in range(0,length,bs):
             minibatch = xt[j:j+bs]
-            loss = feed(minibatch,cnoise)
+            loss = feed(minibatch,cnoise,init=init)
             print(j,'loss:',loss)
 
             if j%1000==0:
