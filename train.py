@@ -75,7 +75,16 @@ def get_trainer():
     binary_code = Act('sigmoid')(noisy_code)
 
     y = dec(binary_code)
-    loss = tf.reduce_mean((y-noisy_x)**2) + tf.reduce_mean(binary_code**2) * 0.01
+
+    def image_similarity(a,b):
+        return tf.reduce_mean((a-b)**2)
+
+    reconstruction_loss = image_similarity(y, noisy_x)
+
+    # encourage sparsity of produced code
+    sparsity_penalty = tf.reduce_mean(binary_code**2) * 0.1
+
+    loss =  reconstruction_loss + sparsity_penalty
 
     opt = tf.train.AdamOptimizer()
     train_step = opt.minimize(loss,
